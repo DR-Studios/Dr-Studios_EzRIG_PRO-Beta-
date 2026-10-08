@@ -1,0 +1,7 @@
+{
+  "name": "EasyRig Tri-Mode",
+  "description": "Production-grade 3D character rigging engine featuring anthropometric stature math, kinematic pose transfer, manual joint editing, sagittal separation skin binding, and GLB export.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+

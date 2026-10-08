@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EasyRig Tri-Mode - Adaptive 3D Character Rigging Engine</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { margin: 0; overflow: hidden; background: #090d16; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    #canvas-container { position: absolute; inset: 0; outline: none; }
+    .custom-scroll::-webkit-scrollbar { width: 6px; }
+    .custom-scroll::-webkit-scrollbar-track { background: #0f172a; }
+    .custom-scroll::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+    .custom-scroll::-webkit-scrollbar-thumb:hover { background: #475569; }
+    .glass-panel { background: rgba(15, 23, 42, 0.88); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); }
+    .badge-edited { background: rgba(245, 158, 11, 0.2); border: 1px solid rgba(245, 158, 11, 0.5); color: #fbbf24; }
+  </style>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body class="text-slate-100 select-none">
+  <div id="canvas-container"></div>
+
+  <div class="relative z-10 flex flex-col h-screen pointer-events-none">
+    
+    <!-- TOP HEADER & BAR -->
+    <header class="pointer-events-auto glass-panel px-4 py-2.5 flex items-center justify-between border-b border-slate-800">
+      <div class="flex items-center space-x-3">
+        <div class="w-8 h-8 rounded-lg bg-cyan-500/20 border border-cyan-400/40 flex items-center justify-center text-cyan-400 font-bold text-base shadow-lg shadow-cyan-500/10">
+          ⚙️
+        </div>
+        <div>
+          <h1 class="text-sm font-bold tracking-tight text-white flex items-center gap-2">
+            EasyRig Tri-Mode <span class="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/30">v2.2 Studio</span>
+          </h1>
+          <p class="text-[10px] text-slate-400">Independent Model & Skeleton Rotation | Pose Library</p>
+        </div>
+      </div>
+
+      <!-- Mode Selector -->
+      <div class="flex items-center space-x-1 bg-slate-900/90 p-1 rounded-xl border border-slate-800">
+        <button id="btn-mode-proportional" class="mode-tab active px-3 py-1.5 rounded-lg text-xs font-semibold bg-cyan-500 text-slate-950 shadow-md">
+          1. Proportional Auto-Rig
+        </button>
+        <button id="btn-mode-pose" class="mode-tab px-3 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800 transition-all">
+          2. Kinematic Pose Transfer
+        </button>
+        <button id="btn-mode-manual" class="mode-tab px-3 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800 transition-all">
+          3. Manual Override (Active)
+        </button>
+      </div>
+
+      <!-- Quick Action Tools -->
+      <div class="flex items-center space-x-2">
+        <button id="btn-turntable" title="Continuous 360° turntable spin" class="px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-300 text-xs flex items-center gap-1.5">
+          <span>🔄</span> Turntable 360°
+        </button>
+        <button id="btn-auto-rig" class="px-3 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-xs font-medium transition-all flex items-center gap-1.5">
+          <span>⚡</span> Auto Rig Everything
+        </button>
+        <button id="btn-export-glb" class="px-3 py-1.5 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-semibold shadow-md transition-all flex items-center gap-1.5">
+          <span>📦</span> Export .GLB
+        </button>
+      </div>
+    </header>
+
+    <!-- MAIN INTERACTIVE WORKSPACE -->
+    <div class="flex-1 flex overflow-hidden">
+      
+      <!-- LEFT WORKSPACE PANEL -->
+      <aside class="pointer-events-auto w-92 glass-panel border-r border-slate-800/80 flex flex-col p-4 custom-scroll overflow-y-auto space-y-4">
+        
+        <!-- Workflow Stage Tabs -->
+        <div>
+          <label class="text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-1.5 block">Pipeline Stage</label>
+          <div class="grid grid-cols-4 gap-1 bg-slate-900/90 p-1 rounded-lg border border-slate-800 text-[11px]">
+            <button id="stage-placement" class="stage-tab bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-semibold py-1 rounded">1. Joints</button>
+            <button id="stage-skinning" class="stage-tab hover:bg-slate-800 text-slate-400 py-1 rounded">2. Skin</button>
+            <button id="stage-testing" class="stage-tab hover:bg-slate-800 text-slate-400 py-1 rounded">3. Test</button>
+            <button id="stage-export" class="stage-tab hover:bg-slate-800 text-slate-400 py-1 rounded">4. Export</button>
+          </div>
+        </div>
+
+        <!-- STAGE 1: MODE CONFIGURATIONS -->
+        <div id="panel-mode-proportional" class="space-y-4">
+          <div class="bg-slate-900/60 p-3 rounded-xl border border-slate-800/60 space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-semibold text-cyan-300 flex items-center gap-1.5">
+                <span>📐</span> Wide-Range Arm Movement
+              </span>
+              <span class="text-[10px] text-slate-400">Kinematic Arc</span>
+            </div>
+
+            <!-- Quick Arm Posture Presets -->
+            <div class="space-y-1">
+              <label class="text-[10px] uppercase font-bold text-slate-400">Quick Arm Postures</label>
+              <div class="grid grid-cols-2 gap-1.5">
+                <button id="btn-hands-on-hips" class="p-1.5 rounded bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 text-left text-xs font-medium col-span-2 flex items-center justify-between">
+                  <span>🧍 Hands on Hips (Akimbo)</span>
+                  <span class="text-[9px] px-1 bg-cyan-500/20 rounded">Touch Hips</span>
+                </button>
+                <button id="btn-arm-tpose" class="p-1.5 rounded bg-slate-950/70 hover:bg-slate-800 border border-slate-800 text-left text-xs">
+                  <span class="block font-medium text-white">T-Pose</span>
+                  <span class="text-[10px] text-slate-500">Horizontal 0°</span>
+                </button>
+                <button id="btn-arm-apose" class="p-1.5 rounded bg-slate-950/70 hover:bg-slate-800 border border-slate-800 text-left text-xs">
+                  <span class="block font-medium text-white">A-Pose</span>
+                  <span class="text-[10px] text-slate-500">Relaxed 45°</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Arm Sliders -->
+            <div class="space-y-2 pt-1 border-t border-slate-800/60">
+              <div class="space-y-1">
+                <div class="flex justify-between text-xs">
+                  <span class="text-slate-300 font-medium">Arm Elevation (Spread)</span>
+                  <span id="arm-spread-label" class="text-cyan-400 font-mono text-[11px]">T-Pose (100%)</span>
+                </div>
+                <input id="slider-arm-spread" type="range" min="-0.2" max="1.4" step="0.02" value="1.0" class="w-full accent-cyan-400 h-1.5 bg-slate-800 rounded-lg cursor-pointer">
+              </div>
+
+              <div class="space-y-1">
+                <div class="flex justify-between text-xs">
+                  <span class="text-slate-300 font-medium">Elbow Flexion</span>
+                  <span id="elbow-flex-label" class="text-cyan-400 font-mono text-[11px]">0°</span>
+                </div>
+                <input id="slider-elbow-flex" type="range" min="0" max="1" step="0.02" value="0.0" class="w-full accent-cyan-400 h-1.5 bg-slate-800 rounded-lg cursor-pointer">
+              </div>
+            </div>
+
+            <button id="btn-recalculate-proportions" class="w-full py-2 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 text-xs font-medium transition-all">
+              Fit Skeleton to Stature
+            </button>
+          </div>
+        </div>
+
+        <!-- MODE 2: KINEMATIC POSE TRANSFER -->
+        <div id="panel-mode-pose" class="space-y-4 hidden">
+          <div class="bg-slate-900/60 p-3 rounded-xl border border-slate-800/60 space-y-3">
+            <span class="text-xs font-semibold text-emerald-300 block">🧍 Posable Mannequin Proxy</span>
+            <div class="grid grid-cols-2 gap-1.5">
+              <button class="pose-preset-btn p-2 rounded bg-slate-950/70 hover:bg-slate-800 border border-slate-800 text-left text-xs" data-preset="t_pose">
+                <span class="block font-medium text-white">T-Pose</span>
+              </button>
+              <button class="pose-preset-btn p-2 rounded bg-slate-950/70 hover:bg-slate-800 border border-slate-800 text-left text-xs" data-preset="a_pose">
+                <span class="block font-medium text-white">A-Pose</span>
+              </button>
+              <button class="pose-preset-btn p-2 rounded bg-slate-950/70 hover:bg-slate-800 border border-slate-800 text-left text-xs" data-preset="crouched">
+                <span class="block font-medium text-white">Crouch Combat</span>
+              </button>
+              <button class="pose-preset-btn p-2 rounded bg-slate-950/70 hover:bg-slate-800 border border-slate-800 text-left text-xs" data-preset="seated">
+                <span class="block font-medium text-white">Seated</span>
+              </button>
+              <button class="pose-preset-btn p-2 rounded bg-slate-950/70 hover:bg-slate-800 border border-slate-800 text-left text-xs col-span-2" data-preset="hero_stance">
+                <span class="block font-medium text-white">Hero Action Stance</span>
+              </button>
+            </div>
+            <button id="btn-transfer-pose" class="w-full py-2 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-slate-950 text-xs font-bold">
+              Use This Pose & Transfer
+            </button>
+          </div>
+        </div>
+
+        <!-- MODE 3: MANUAL OVERRIDE -->
+        <div id="panel-mode-manual" class="space-y-4 hidden">
+          <div class="bg-slate-900/60 p-3 rounded-xl border border-slate-800/60 space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-semibold text-amber-300">🎯 Manual Joint Override</span>
+              <div class="flex bg-slate-950 p-0.5 rounded border border-slate-800">
+                <button id="btn-gizmo-trans" class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500 text-slate-950">Pos (G)</button>
+                <button id="btn-gizmo-rot" class="px-2 py-0.5 rounded text-[10px] text-slate-400">Rot (R)</button>
+              </div>
+            </div>
+
+            <div class="bg-slate-950/80 p-2.5 rounded-lg border border-slate-800 space-y-2">
+              <span id="selected-joint-name" class="text-xs font-mono font-bold text-amber-400 block">Pelvis</span>
+              <div class="grid grid-cols-3 gap-1.5">
+                <input id="joint-pos-x" type="number" step="0.01" class="bg-slate-900 border border-slate-700 rounded px-1.5 py-1 text-xs font-mono text-white">
+                <input id="joint-pos-y" type="number" step="0.01" class="bg-slate-900 border border-slate-700 rounded px-1.5 py-1 text-xs font-mono text-white">
+                <input id="joint-pos-z" type="number" step="0.01" class="bg-slate-900 border border-slate-700 rounded px-1.5 py-1 text-xs font-mono text-white">
+              </div>
+            </div>
+
+            <label class="flex items-center justify-between text-xs cursor-pointer p-2 rounded bg-slate-950 border border-slate-800">
+              <span class="text-slate-300 font-medium">Sagittal Symmetry (X &harr; -X)</span>
+              <input id="toggle-symmetry" type="checkbox" checked class="accent-cyan-400 w-4 h-4 rounded">
+            </label>
+          </div>
+        </div>
+
+        <!-- STAGE 2: SKIN BINDING -->
+        <div id="panel-stage-skinning" class="space-y-4 hidden">
+          <div class="bg-slate-900/60 p-3 rounded-xl border border-slate-800/60 space-y-3">
+            <span class="text-xs font-semibold text-purple-300 block">🧬 Skin Binding Stage</span>
+            <button id="btn-bind-skin" class="w-full py-2.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-all shadow-md">
+              Calculate Weights & Bind Skin
+            </button>
+          </div>
+        </div>
+
+        <!-- STAGE 3: TEST BENCH WITH POSE LIBRARY -->
+        <div id="panel-stage-testing" class="space-y-3 hidden">
+          <!-- Sub-Tab Header -->
+          <div class="grid grid-cols-2 gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800 text-[11px]">
+            <button id="btn-subtab-motions" class="py-1 rounded font-semibold bg-sky-500/20 text-sky-300 border border-sky-500/30">Motions</button>
+            <button id="btn-subtab-library" class="py-1 rounded text-slate-400 hover:bg-slate-850">Pose Library</button>
+          </div>
+
+          <!-- Motions Sub-Panel -->
+          <div id="panel-test-motions" class="space-y-3">
+            <div class="grid grid-cols-2 gap-1.5">
+              <button class="anim-btn p-2 rounded bg-slate-950/70 hover:bg-slate-800 border border-slate-800 text-left text-xs font-medium text-slate-200 col-span-2" data-anim="ambient_crowd">
+                👥 Intermittent Crowd Idle
+              </button>
+              <button class="anim-btn p-2 rounded bg-slate-950/70 hover:bg-slate-800 border border-slate-800 text-left text-xs font-medium text-slate-200" data-anim="intermittent_walk">
+                ⏳ Intermittent Walk
+              </button>
+              <button class="anim-btn p-2 rounded bg-slate-950/70 hover:bg-slate-800 border border-slate-800 text-left text-xs font-medium text-slate-200" data-anim="walk">
+                🚶 Continuous Walk
+              </button>
+              <button class="anim-btn p-2 rounded bg-slate-950/70 hover:bg-slate-800 border border-slate-800 text-left text-xs font-medium text-slate-200" data-anim="hands_on_hips">
+                🧍 Hands on Hips
+              </button>
+              <button class="anim-btn p-2 rounded bg-slate-950/70 hover:bg-slate-800 border border-slate-800 text-left text-xs font-medium text-slate-200" data-anim="wave">
+                👋 Arm Wave
+              </button>
+              <button class="anim-btn p-2 rounded bg-slate-950/70 hover:bg-slate-800 border border-slate-800 text-left text-xs font-medium text-slate-200 col-span-2" data-anim="rest">
+                ⏸️ Rest Bind Pose
+              </button>
+            </div>
+          </div>
+
+          <!-- Pose Library Sub-Panel -->
+          <div id="panel-test-library" class="space-y-3 hidden">
+            <div class="bg-slate-900/80 p-2.5 rounded-lg border border-slate-800 space-y-2">
+              <span class="text-[10px] uppercase font-bold text-slate-400 block">Capture Current Pose</span>
+              <div class="flex gap-2">
+                <input id="input-new-pose-name" type="text" placeholder="Pose Name (e.g. Guard)" class="flex-1 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-white">
+                <button id="btn-save-current-pose" class="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded text-xs">
+                  Save
+                </button>
+              </div>
+            </div>
+
+            <!-- Saved Poses List -->
+            <div id="saved-poses-list" class="space-y-1.5 max-h-56 overflow-y-auto custom-scroll"></div>
+          </div>
+        </div>
+
+        <!-- INDEPENDENT ROTATION & ALIGNMENT PANEL -->
+        <div class="bg-slate-900/60 p-3 rounded-xl border border-slate-800/60 space-y-2.5">
+          <label class="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">Independent Rotation Controls</label>
+
+          <!-- 1. Rotate Model Mesh (Leaving Skeleton Intact) -->
+          <div class="p-2 rounded bg-slate-950 border border-slate-800 space-y-1.5">
+            <div class="flex justify-between items-center text-[11px]">
+              <span class="text-cyan-300 font-semibold">Rotate Model Mesh (Only Mesh)</span>
+              <span id="mesh-rot-label" class="font-mono text-slate-400 text-[10px]">0°</span>
+            </div>
+            <div class="grid grid-cols-4 gap-1 text-[11px]">
+              <button id="btn-mesh-rot-left" class="py-1 rounded bg-slate-900 hover:bg-slate-850 border border-slate-800 text-cyan-300">Y -90°</button>
+              <button id="btn-mesh-rot-right" class="py-1 rounded bg-slate-900 hover:bg-slate-850 border border-slate-800 text-cyan-300">Y +90°</button>
+              <button id="btn-mesh-rot-180" class="py-1 rounded bg-slate-900 hover:bg-slate-850 border border-slate-800 text-slate-300">180°</button>
+              <button id="btn-mesh-rot-pitch" class="py-1 rounded bg-slate-900 hover:bg-slate-850 border border-slate-800 text-slate-300">X +90°</button>
+            </div>
+          </div>
+
+          <!-- 2. Rotate Skeleton (Leaving Model Intact) -->
+          <div class="p-2 rounded bg-slate-950 border border-slate-800 space-y-1.5">
+            <div class="flex justify-between items-center text-[11px]">
+              <span class="text-amber-300 font-semibold">Rotate Skeleton (Only Joints)</span>
+              <span id="skel-rot-label" class="font-mono text-slate-400 text-[10px]">0°</span>
+            </div>
+            <div class="grid grid-cols-3 gap-1 text-[11px]">
+              <button id="btn-skel-rot-left" class="py-1 rounded bg-slate-900 hover:bg-slate-850 border border-slate-800 text-amber-300">-90°</button>
+              <button id="btn-skel-rot-right" class="py-1 rounded bg-slate-900 hover:bg-slate-850 border border-slate-800 text-amber-300">+90°</button>
+              <button id="btn-skel-rot-180" class="py-1 rounded bg-slate-900 hover:bg-slate-850 border border-slate-800 text-slate-300">180°</button>
+            </div>
+          </div>
+        </div>
+
+      </aside>
+
+      <!-- CENTER 3D VIEWPORT -->
+      <main class="flex-1 relative flex flex-col justify-between p-4 pointer-events-none">
+        <div class="flex items-center justify-between">
+          <div id="status-toast" class="pointer-events-auto px-3 py-1.5 rounded-lg bg-slate-900/90 border border-slate-800 text-xs flex items-center gap-2 shadow-lg">
+            <span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+            <span id="status-toast-text" class="text-slate-200 font-medium">Ready: EasyRig Tri-Mode Studio Active</span>
+          </div>
+
+          <div class="pointer-events-auto flex gap-1 bg-slate-900/80 p-1 rounded-lg border border-slate-800 text-xs">
+            <button id="btn-cam-front" class="px-2.5 py-1 rounded hover:bg-slate-800 text-slate-300">Front</button>
+            <button id="btn-cam-side" class="px-2.5 py-1 rounded hover:bg-slate-800 text-slate-300">Side</button>
+            <button id="btn-cam-top" class="px-2.5 py-1 rounded hover:bg-slate-800 text-slate-300">Top</button>
+            <button id="btn-cam-reset" class="px-2.5 py-1 rounded hover:bg-slate-800 text-slate-300">3D Free</button>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between text-[11px] text-slate-400">
+          <div class="glass-panel px-3 py-1 rounded-md border border-slate-800">
+            <span>💡 <b>Tip:</b> Rotate Model Mesh independently to orient towards skeleton. G=Move, R=Rotate.</span>
+          </div>
+        </div>
+      </main>
+
+      <!-- RIGHT JOINT TREE -->
+      <aside class="pointer-events-auto w-72 glass-panel border-l border-slate-800/80 flex flex-col p-4 custom-scroll overflow-y-auto">
+        <label class="text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-2 block">Joint Record Map</label>
+        <div id="joint-tree-list" class="space-y-1 text-xs"></div>
+      </aside>
+
+    </div>
+  </div>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { TransformControls } from 'three/addons/controls/TransformControls.js';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+
+    const BONE_DEFINITIONS = [
+      { id: 'pelvis', name: 'Pelvis', parentId: null, side: 'center', y: 0.530, x: 0.0, z: 0.0 },
+      { id: 'spine', name: 'Spine', parentId: 'pelvis', side: 'center', y: 0.620, x: 0.0, z: 0.005 },
+      { id: 'chest', name: 'Chest', parentId: 'spine', side: 'center', y: 0.720, x: 0.0, z: 0.01 },
+      { id: 'neck', name: 'Neck', parentId: 'chest', side: 'center', y: 0.870, x: 0.0, z: 0.0 },
+      { id: 'head', name: 'Head', parentId: 'neck', side: 'center', y: 0.940, x: 0.0, z: 0.015 },
+      { id: 'left_shoulder', name: 'Left_Shoulder', parentId: 'chest', side: 'left', y: 0.818, x: 0.105, z: -0.005 },
+      { id: 'left_elbow', name: 'Left_Elbow', parentId: 'left_shoulder', side: 'left', y: 0.630, x: 0.260, z: -0.01 },
+      { id: 'left_wrist', name: 'Left_Wrist', parentId: 'left_elbow', side: 'left', y: 0.485, x: 0.410, z: 0.0 },
+      { id: 'left_hand', name: 'Left_Hand', parentId: 'left_wrist', side: 'left', y: 0.440, x: 0.450, z: 0.005 },
+      { id: 'right_shoulder', name: 'Right_Shoulder', parentId: 'chest', side: 'right', y: 0.818, x: -0.105, z: -0.005 },
+      { id: 'right_elbow', name: 'Right_Elbow', parentId: 'right_shoulder', side: 'right', y: 0.630, x: -0.260, z: -0.01 },
+      { id: 'right_wrist', name: 'Right_Wrist', parentId: 'right_elbow', side: 'right', y: 0.485, x: -0.410, z: 0.0 },
+      { id: 'right_hand', name: 'Right_Hand', parentId: 'right_wrist', side: 'right', y: 0.440, x: -0.450, z: 0.005 },
+      { id: 'left_hip', name: 'Left_Hip', parentId: 'pelvis', side: 'left', y: 0.505, x: 0.065, z: 0.0 },
+      { id: 'left_knee', name: 'Left_Knee', parentId: 'left_hip', side: 'left', y: 0.285, x: 0.065, z: 0.015 },
+      { id: 'left_ankle', name: 'Left_Ankle', parentId: 'left_knee', side: 'left', y: 0.039, x: 0.065, z: -0.01 },
+      { id: 'left_toe', name: 'Left_Toe', parentId: 'left_ankle', side: 'left', y: 0.010, x: 0.065, z: 0.075 },
+      { id: 'right_hip', name: 'Right_Hip', parentId: 'pelvis', side: 'right', y: 0.505, x: -0.065, z: 0.0 },
+      { id: 'right_knee', name: 'Right_Knee', parentId: 'right_hip', side: 'right', y: 0.285, x: -0.065, z: 0.015 },
+      { id: 'right_ankle', name: 'Right_Ankle', parentId: 'right_knee', side: 'right', y: 0.039, x: -0.065, z: -0.01 },
+      { id: 'right_toe', name: 'Right_Toe', parentId: 'right_ankle', side: 'right', y: 0.010, x: -0.065, z: 0.075 }
+    ];
+
+    const project = {
+      asset: {
+        pivot: new THREE.Group(),
+        workingRoot: new THREE.Group(),
+        minY: 0.0, maxY: 1.80, height: 1.80,
+        meshRotY: 0, meshRotX: 0
+      },
+      fit: {
+        alignmentRoot: new THREE.Group(),
+        jointRecords: new Map(),
+        selectedJointId: 'pelvis',
+        skelRotY: 0
+      },
+      bench: {
+        currentAnimation: 'walk', isPlaying: true, speed: 1.0, time: 0.0, isTurntable: false,
+        savedPoses: []
+      }
+    };
+
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x090d16);
+
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.05, 50);
+    camera.position.set(0, 1.2, 3.2);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    container.appendChild(renderer.domElement);
+
+    const orbit = new OrbitControls(camera, renderer.domElement);
+    orbit.target.set(0, 0.9, 0);
+    orbit.enableDamping = true;
+
+    const transform = new TransformControls(camera, renderer.domElement);
+    transform.size = 0.65;
+    const gizmo = (transform && transform.isObject3D) ? transform : (typeof transform.getHelper === 'function' ? transform.getHelper() : transform);
+    if (gizmo && gizmo.isObject3D) {
+      scene.add(gizmo);
+    }
+
+    transform.addEventListener('dragging-changed', (e) => { orbit.enabled = !e.value; });
+
+    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x1e293b, 0.7);
+    scene.add(hemiLight);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+    dirLight.position.set(3, 5, 4);
+    scene.add(dirLight);
+
+    const grid = new THREE.GridHelper(10, 20, 0x38bdf8, 0x1e293b);
+    scene.add(grid);
+
+    scene.add(project.asset.pivot);
+    project.asset.pivot.add(project.asset.workingRoot);
+    project.asset.pivot.add(project.fit.alignmentRoot);
+
+    const jointMarkers = new Map();
+
+    function computeSkeleton(footY, headY, spread = 1.0, flex = 0.0, handsOnHips = false) {
+      const stature = Math.max(0.1, headY - footY);
+      const armAngleRad = (1.0 - THREE.MathUtils.clamp(spread, -0.3, 1.5)) * THREE.MathUtils.degToRad(75);
+      const cosA = Math.cos(armAngleRad), sinA = Math.sin(armAngleRad);
+
+      for (const def of BONE_DEFINITIONS) {
+        let px = def.x * stature;
+        let py = footY + def.y * stature;
+        let pz = def.z * stature;
+
+        if (handsOnHips) {
+          if (def.id === 'left_elbow') { px = 0.22 * stature; py = footY + 0.62 * stature; pz = -0.04 * stature; }
+          else if (def.id === 'left_wrist') { px = 0.13 * stature; py = footY + 0.51 * stature; pz = 0.02 * stature; }
+          else if (def.id === 'left_hand') { px = 0.12 * stature; py = footY + 0.47 * stature; pz = 0.04 * stature; }
+          else if (def.id === 'right_elbow') { px = -0.22 * stature; py = footY + 0.62 * stature; pz = -0.04 * stature; }
+          else if (def.id === 'right_wrist') { px = -0.13 * stature; py = footY + 0.51 * stature; pz = 0.02 * stature; }
+          else if (def.id === 'right_hand') { px = -0.12 * stature; py = footY + 0.47 * stature; pz = 0.04 * stature; }
+        } else if (def.id.startsWith('left_') && (def.id.includes('elbow') || def.id.includes('wrist') || def.id.includes('hand'))) {
+          const sX = 0.105 * stature, sY = footY + 0.818 * stature;
+          if (def.id === 'left_elbow') { px = sX + 0.165 * stature * cosA; py = sY - 0.165 * stature * sinA; }
+          else if (def.id === 'left_wrist') { px = sX + 0.32 * stature * cosA - (flex * 0.05 * stature); py = sY - 0.32 * stature * sinA; }
+          else if (def.id === 'left_hand') { px = sX + 0.375 * stature * cosA - (flex * 0.07 * stature); py = sY - 0.375 * stature * sinA; }
+        } else if (def.id.startsWith('right_') && (def.id.includes('elbow') || def.id.includes('wrist') || def.id.includes('hand'))) {
+          const sX = -0.105 * stature, sY = footY + 0.818 * stature;
+          if (def.id === 'right_elbow') { px = sX - 0.165 * stature * cosA; py = sY - 0.165 * stature * sinA; }
+          else if (def.id === 'right_wrist') { px = sX - 0.32 * stature * cosA + (flex * 0.05 * stature); py = sY - 0.32 * stature * sinA; }
+          else if (def.id === 'right_hand') { px = sX - 0.375 * stature * cosA + (flex * 0.07 * stature); py = sY - 0.375 * stature * sinA; }
+        }
+
+        project.fit.jointRecords.set(def.id, {
+          id: def.id, name: def.name, parentId: def.parentId,
+          positionModelSpace: [px, py, pz], userEdited: false, source: 'proportional'
+        });
+      }
+      refreshJoints();
+    }
+
+    function refreshJoints() {
+      for (const marker of jointMarkers.values()) project.fit.alignmentRoot.remove(marker);
+      jointMarkers.clear();
+
+      for (const [id, rec] of project.fit.jointRecords.entries()) {
+        const geo = new THREE.SphereGeometry(0.025, 16, 16);
+        const col = id.startsWith('left') ? 0x34d399 : id.startsWith('right') ? 0xf87171 : 0x38bdf8;
+        const mat = new THREE.MeshStandardMaterial({ color: col, depthTest: false });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.userData = { id };
+        mesh.position.set(...rec.positionModelSpace);
+        mesh.renderOrder = 999;
+        project.fit.alignmentRoot.add(mesh);
+        jointMarkers.set(id, mesh);
+      }
+
+      const sel = jointMarkers.get(project.fit.selectedJointId);
+      if (sel) transform.attach(sel); else transform.detach();
+    }
+
+    // Independent Model Mesh Rotation
+    function rotateModelMeshY(deg) {
+      project.asset.meshRotY = (project.asset.meshRotY + deg) % 360;
+      project.asset.workingRoot.rotation.y = THREE.MathUtils.degToRad(project.asset.meshRotY);
+      document.getElementById('mesh-rot-label').textContent = `${project.asset.meshRotY}°`;
+    }
+
+    function rotateModelMeshX(deg) {
+      project.asset.meshRotX = (project.asset.meshRotX + deg) % 360;
+      project.asset.workingRoot.rotation.x = THREE.MathUtils.degToRad(project.asset.meshRotX);
+      document.getElementById('mesh-rot-label').textContent = `X:${project.asset.meshRotX}° Y:${project.asset.meshRotY}°`;
+    }
+
+    document.getElementById('btn-mesh-rot-left').onclick = () => rotateModelMeshY(-90);
+    document.getElementById('btn-mesh-rot-right').onclick = () => rotateModelMeshY(90);
+    document.getElementById('btn-mesh-rot-180').onclick = () => rotateModelMeshY(180);
+    document.getElementById('btn-mesh-rot-pitch').onclick = () => rotateModelMeshX(90);
+
+    // Independent Skeleton Rotation
+    function rotateSkeletonY(deg) {
+      project.fit.skelRotY = (project.fit.skelRotY + deg) % 360;
+      const rad = THREE.MathUtils.degToRad(deg);
+      const cos = Math.cos(rad), sin = Math.sin(rad);
+      for (const rec of project.fit.jointRecords.values()) {
+        const [x, y, z] = rec.positionModelSpace;
+        rec.positionModelSpace = [x * cos - z * sin, y, x * sin + z * cos];
+      }
+      document.getElementById('skel-rot-label').textContent = `${project.fit.skelRotY}°`;
+      refreshJoints();
+    }
+
+    document.getElementById('btn-skel-rot-left').onclick = () => rotateSkeletonY(-90);
+    document.getElementById('btn-skel-rot-right').onclick = () => rotateSkeletonY(90);
+    document.getElementById('btn-skel-rot-180').onclick = () => rotateSkeletonY(180);
+
+    // Turntable
+    document.getElementById('btn-turntable').onclick = () => {
+      project.bench.isTurntable = !project.bench.isTurntable;
+    };
+
+    // Hands on hips
+    document.getElementById('btn-hands-on-hips').onclick = () => {
+      computeSkeleton(0, 1.8, -0.2, 0.8, true);
+    };
+
+    // Subtabs in Test Bench
+    document.getElementById('btn-subtab-motions').onclick = () => {
+      document.getElementById('panel-test-motions').classList.remove('hidden');
+      document.getElementById('panel-test-library').classList.add('hidden');
+    };
+    document.getElementById('btn-subtab-library').onclick = () => {
+      document.getElementById('panel-test-motions').classList.add('hidden');
+      document.getElementById('panel-test-library').classList.remove('hidden');
+      renderPoseLibrary();
+    };
+
+    // Pose Library Functions
+    function renderPoseLibrary() {
+      const list = document.getElementById('saved-poses-list');
+      list.innerHTML = '';
+      const poses = project.bench.savedPoses;
+
+      if (poses.length === 0) {
+        list.innerHTML = '<div class="text-[11px] text-slate-500 p-2">No custom poses saved yet. Click "Save" above to capture pose.</div>';
+        return;
+      }
+
+      poses.forEach((p, idx) => {
+        const item = document.createElement('div');
+        item.className = 'p-2 rounded bg-slate-900 border border-slate-800 flex justify-between items-center text-xs';
+        item.innerHTML = `
+          <span class="font-medium text-slate-200 truncate">${p.name}</span>
+          <div class="flex gap-1">
+            <button class="px-2 py-0.5 bg-cyan-500/20 text-cyan-300 rounded text-[10px]" data-load="${idx}">Apply</button>
+            <button class="px-1.5 py-0.5 bg-red-950 text-red-300 rounded text-[10px]" data-del="${idx}">✕</button>
+          </div>
+        `;
+        list.appendChild(item);
+      });
+
+      list.querySelectorAll('[data-load]').forEach(btn => {
+        btn.onclick = () => {
+          const pose = poses[parseInt(btn.getAttribute('data-load'))];
+          for (const [id, pos] of Object.entries(pose.joints)) {
+            const rec = project.fit.jointRecords.get(id);
+            if (rec) rec.positionModelSpace = [...pos];
+          }
+          refreshJoints();
+        };
+      });
+
+      list.querySelectorAll('[data-del]').forEach(btn => {
+        btn.onclick = () => {
+          poses.splice(parseInt(btn.getAttribute('data-del')), 1);
+          renderPoseLibrary();
+        };
+      });
+    }
+
+    document.getElementById('btn-save-current-pose').onclick = () => {
+      const name = document.getElementById('input-new-pose-name').value.trim() || `Pose #${project.bench.savedPoses.length + 1}`;
+      const jointsObj = {};
+      for (const [id, rec] of project.fit.jointRecords.entries()) {
+        jointsObj[id] = [...rec.positionModelSpace];
+      }
+      project.bench.savedPoses.unshift({ name, joints: jointsObj });
+      document.getElementById('input-new-pose-name').value = '';
+      renderPoseLibrary();
+    };
+
+    // Default Mesh
+    const bodyMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.45 });
+    const pelvis = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.12, 0.16, 16), bodyMat);
+    pelvis.position.set(0, 0.95, 0); project.asset.workingRoot.add(pelvis);
+    const chest = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.13, 0.26, 16), bodyMat);
+    chest.position.set(0, 1.30, 0.01); project.asset.workingRoot.add(chest);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.12, 24, 24), bodyMat);
+    head.position.set(0, 1.66, 0.02); project.asset.workingRoot.add(head);
+
+    computeSkeleton(0, 1.8, 1.0, 0, false);
+
+    const clock = new THREE.Clock();
+    function animate() {
+      requestAnimationFrame(animate);
+      const delta = clock.getDelta();
+      orbit.update();
+      if (project.bench.isTurntable) project.asset.pivot.rotation.y += delta * 0.6;
+      renderer.render(scene, camera);
+    }
+    animate();
+  </script>
+</body>
+</html>
